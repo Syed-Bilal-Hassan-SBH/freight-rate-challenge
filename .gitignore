@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
+# data files: add them back only if the assessment starter repo already contains them
+data/
+.ipynb_checkpoints/
+__pycache__/
+.venv/
+venv/

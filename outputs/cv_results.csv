@@ -1,0 +1,11 @@
+model,group,MAE,MAPE,RMSE,RMSE_incl_corrupted
+1. Distance + equipment only (linear),all rows,78.77,3.51,109.12,630.57
+1. Distance + equipment only (linear),unseen cities,87.97,3.56,119.2,687.07
+"2. Naive GBM on raw columns, no cleaning",all rows,83.32,3.56,120.2,634.39
+"2. Naive GBM on raw columns, no cleaning",unseen cities,94.72,3.59,135.47,690.58
+3. Final model WITHOUT trend + quarter-end terms,all rows,81.64,3.49,110.22,633.41
+3. Final model WITHOUT trend + quarter-end terms,unseen cities,91.26,3.53,120.72,688.77
+"4. Final model, labels NOT cleaned",all rows,47.42,2.04,67.94,620.87
+"4. Final model, labels NOT cleaned",unseen cities,51.94,2.05,72.78,677.02
+5. FINAL MODEL,all rows,41.56,1.77,59.88,620.17
+5. FINAL MODEL,unseen cities,46.99,1.82,66.57,675.28

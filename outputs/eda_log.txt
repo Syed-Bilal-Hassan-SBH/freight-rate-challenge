@@ -1,0 +1,132 @@
+
+==============================================================================
+Q1. What is in the files?  (shape, types, time span)
+==============================================================================
+train_test : (48000, 14)  dates 2025-01-01 -> 2025-10-31
+validation : (12000, 13)  dates 2025-11-01 -> 2025-12-31
+target     : posted_rate (only in train_test). Everything else is a feature.
+=> The validation set is entirely AFTER the training period (Nov-Dec vs Jan-Oct).
+   This is a FORECASTING problem, so validation must be forward in time, not random.
+
+==============================================================================
+Q2. Missing values / impossible values
+==============================================================================
+              train_missing  valid_missing
+market_index            374          249.0
+weight                  300          165.0
+
+Negative weights   : train 292  valid 145
+|weight| == 47,500 : train 1204  (column is capped there)
+weight == 0        : 0
+duplicate load_id  : 0
+pickup == delivery : 0
+=> weight has sign errors and gaps; market_index has gaps.  Handled in clean_inputs().
+
+==============================================================================
+Q3. Do validation categories exist in training?  (generalisation risk)
+==============================================================================
+cities in train: 64   cities in validation: 72
+cities NEVER seen in training: ['Allentown', 'Charlotte', 'Chicago', 'Jackson', 'Knoxville', 'Laredo', 'Norfolk', 'San Diego']
+=> 12.1% of validation rows touch an unseen city.  A model that memorises city names (one-hot /
+   target encoding) would fail on them -> use lat/lon + distance instead.  I simulate this in CV.
+
+Equipment mix (train): {'Dry Van': 0.567, 'Reefer': 0.251, 'Flatbed': 0.182}
+Equipment mix (valid): {'Dry Van': 0.565, 'Reefer': 0.254, 'Flatbed': 0.181}
+
+==============================================================================
+Q4. How does the target behave?
+==============================================================================
+       posted_rate  distance       rpm
+count     48000.00  48000.00  48000.00
+mean       2373.98   1135.86      2.22
+std        1486.49    728.56      0.58
+min          57.22     70.00      0.33
+25%        1251.55    550.40      1.99
+50%        2030.76    953.30      2.15
+75%        3330.75   1645.52      2.34
+max       25533.00   3439.80     14.13
+
+Spearman correlation with posted_rate:
+posted_rate     1.000
+distance        0.976
+weight          0.042
+market_index    0.032
+quote_signal   -0.040
+Name: posted_rate, dtype: float64
+=> rate is driven almost entirely by distance (rho=0.98), roughly log-log.  Rate-per-mile is NOT constant:
+   short hauls cost more per mile, so we use log(distance) and log(distance)^2.
+
+Rate per mile by equipment (median): {'Dry Van': 2.046, 'Flatbed': 2.22, 'Reefer': 2.312}
+
+==============================================================================
+Q5. Are there corrupted labels?
+==============================================================================
+rows flagged as corrupted : 677  (1.41%)
+  too high (rate x2-6)    : 340
+  too low  (rate /2-6)    : 337
+residual sd, good rows    : 0.0401 (log units, ~4.0%)
+smallest |resid| among flagged: 0.78  (clear gap -> threshold 0.4 is safe)
+            pickup      delivery  distance equipment  posted_rate        rpm
+14102      Buffalo   Bakersfield    2536.4   Dry Van       846.42   0.333709
+25798       Albany          Reno    2894.3   Dry Van       969.83   0.335083
+23043      Phoenix  Philadelphia    2983.4   Dry Van      1047.91   0.351247
+870          Tulsa   Baton Rouge     305.6    Reefer      4069.24  13.315576
+36609  Chattanooga       Atlanta      98.4    Reefer      1386.42  14.089634
+22254   Greensboro    Cincinnati     314.7    Reefer      4445.23  14.125294
+
+==============================================================================
+Q6. How do the two 'market' columns behave over time?  (incl. the validation period)
+==============================================================================
+market_index within a day: sd ~0.025 per row vs. a yearly range 0.7-1.4  => it is ONE daily level + noise.
+market_index autocorrelation: lag1=0.93  lag7=0.97  (weekly cycle)
+
+Monthly mean (std of the daily values):
+        dmi           dqs       
+       mean    std   mean    std
+date                            
+1     0.927  0.076  2.068  0.030
+2     0.997  0.080  2.097  0.032
+3     1.074  0.077  2.180  0.045
+4     1.209  0.100  1.963  0.040
+5     1.300  0.071  1.913  0.027
+6     1.280  0.073  2.296  0.046
+7     1.200  0.116  1.923  0.046
+8     0.980  0.075  2.052  0.017
+9     0.893  0.077  2.200  0.033
+10    0.957  0.068  1.943  0.026
+11    0.919  0.071  2.055  0.016
+12    0.934  0.071  2.048  0.016
+=> quote_signal changes REGIME month to month (2.3 in June, 1.9 in July, 2.05 in Nov/Dec with tiny spread).
+   It looks like a date fingerprint, not a stable driver.  See modelling notes for why it is excluded.
+
+==============================================================================
+Q7. What explains the day-to-day level of rates?  (the key discovery)
+==============================================================================
+Mean leftover (log units) by days until quarter-end, Q1-Q3 data:
+(-1, 0]      0.0342
+(0, 2]       0.0350
+(2, 5]       0.0266
+(5, 9]       0.0232
+(9, 14]      0.0144
+(14, 21]     0.0073
+(21, 30]    -0.0005
+(30, 45]    -0.0067
+(45, 60]    -0.0072
+(60, 100]   -0.0049
+Name: resid, dtype: float64
+=> A steady climb of about +3.5% over the last month of every quarter, then a reset on day 1 of the next.
+   This is a CALENDAR effect, so it is modelled with a days_to_quarter_end ramp feature.
+   Consequence for the December chart: rates should rise through December towards Dec 31.
+
+==============================================================================
+Q8. What do the December chart inputs need?
+==============================================================================
+      pickup    delivery  distance equipment  weight       date  predicted_rate
+0  Lexington  Fort Wayne       360   Dry Van   32000 2025-12-01             NaN
+1  Lexington  Fort Wayne       360   Dry Van   32000 2025-12-02             NaN
+2  Lexington  Fort Wayne       360   Dry Van   32000 2025-12-03             NaN
+
+It only has pickup, delivery, distance, equipment, weight, date.  The model also needs lat/lon (looked up
+from the city) and the daily market index (averaged from validation.csv rows on that date) - see train_and_predict.py.
+
+EDA finished.  Figures saved in: figures

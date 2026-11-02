@@ -1,0 +1,51 @@
+==============================================================================
+FORWARD-IN-TIME CROSS-VALIDATION
+==============================================================================
+fold 1: train 2025-01-01..2025-06-30 (22,027 rows) -> test 2025-07-01..2025-08-31 (9,671 rows, 24% touch unseen cities)
+fold 2: train 2025-01-01..2025-07-31 (26,222 rows) -> test 2025-08-01..2025-09-30 (9,429 rows, 22% touch unseen cities)
+fold 3: train 2025-01-01..2025-08-31 (28,479 rows) -> test 2025-09-01..2025-10-31 (9,523 rows, 26% touch unseen cities)
+
+Metrics on rows with trustworthy labels, averaged over the 3 folds (MAE/RMSE in dollars, MAPE in %).
+RMSE_incl_corrupted shows RMSE if the ~1.4% corrupted labels are also counted (nobody can predict those).
+
+                                                                  MAE  MAPE    RMSE  RMSE_incl_corrupted
+model                                            group                                                  
+1. Distance + equipment only (linear)            all rows       78.77  3.51  109.12               630.57
+                                                 unseen cities  87.97  3.56  119.20               687.07
+2. Naive GBM on raw columns, no cleaning         all rows       82.91  3.57  119.35               633.65
+                                                 unseen cities  94.48  3.60  135.15               691.05
+3. Final model WITHOUT trend + quarter-end terms all rows       81.68  3.49  110.23               633.46
+                                                 unseen cities  91.48  3.54  120.95               688.95
+4. Final model, labels NOT cleaned               all rows       47.34  2.04   67.81               620.98
+                                                 unseen cities  51.58  2.03   72.49               677.17
+5. FINAL MODEL                                   all rows       41.55  1.77   59.90               620.14
+                                                 unseen cities  46.91  1.81   66.51               675.21
+
+==============================================================================
+FINAL MODEL
+==============================================================================
+trained on 47,323 of 48,000 rows (677 corrupted labels removed)
+linear coefficients (per unit of raw feature, log-rate units):
+   log_distance         +0.7449
+   log_distance^2       +0.0096
+   flatbed              +0.0802
+   reefer               +0.1215
+   daily_market_index   +0.1425
+   trend(per 100d)      +0.0197
+   quarter_end_ramp     +0.0389
+
+saved outputs/validation_predictions.csv  (12,000 rows)
+predicted rate summary: {'count': 12000.0, 'mean': 2397.1, 'std': 1382.0, 'min': 195.5, '25%': 1294.4, '50%': 2074.4, '75%': 3398.1, 'max': 7073.5}
+saved outputs/december_chart_inputs.csv
+      date  predicted_rate
+2025-12-01          825.81
+2025-12-02          836.47
+2025-12-07          832.52
+2025-12-08          834.86
+2025-12-15          844.31
+2025-12-22          854.39
+2025-12-29          864.29
+2025-12-30          874.78
+2025-12-31          886.50
+
+Next:  python score.py --predictions outputs/validation_predictions.csv --december-predictions outputs/december_chart_inputs.csv
